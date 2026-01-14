@@ -1,44 +1,43 @@
 /* ========================================
-   Antigravity Physics Engine
-   Portfolio Background Animation
+   Antigravity Flow Animation Engine
+   Inspired by antigravity.google
    ======================================== */
 
-(function() {
+(function () {
     'use strict';
 
     // Configuration
     const CONFIG = {
-        particleCount: 25,
-        minSize: 15,
-        maxSize: 70,
-        baseVelocity: 0.3,
-        friction: 0.98,
-        mouseInfluence: 200,
-        mouseRepelStrength: 0.8,
-        rotationSpeed: 0.015,
-        bounceDecay: 0.7,
-        connectionDistance: 150,
-        connectionOpacity: 0.15
+        particleCount: 800,
+        particleLength: 12,
+        particleWidth: 2,
+        noiseScale: 0.003,
+        noiseSpeed: 0.0003,
+        flowSpeed: 1.2,
+        mouseInfluence: 120,
+        mouseStrength: 0.15,
+        friction: 0.96,
+        maxSpeed: 3,
+        fadeSpeed: 0.012
     };
 
-    // Particle shapes
-    const SHAPES = ['circle', 'triangle', 'square', 'hexagon', 'diamond'];
-
-    // Color palettes for themes
+    // Color palettes matching antigravity.google but adapted for themes
     const COLORS = {
         dark: [
-            { fill: 'rgba(129, 140, 248, 0.15)', stroke: 'rgba(129, 140, 248, 0.4)' },
-            { fill: 'rgba(167, 139, 250, 0.15)', stroke: 'rgba(167, 139, 250, 0.4)' },
-            { fill: 'rgba(99, 102, 241, 0.15)', stroke: 'rgba(99, 102, 241, 0.4)' },
-            { fill: 'rgba(139, 92, 246, 0.12)', stroke: 'rgba(139, 92, 246, 0.35)' },
-            { fill: 'rgba(196, 181, 253, 0.1)', stroke: 'rgba(196, 181, 253, 0.3)' }
+            'rgba(129, 140, 248, 0.7)',  // Indigo
+            'rgba(167, 139, 250, 0.7)',  // Purple
+            'rgba(99, 102, 241, 0.7)',   // Blue
+            'rgba(192, 132, 252, 0.6)',  // Violet
+            'rgba(96, 165, 250, 0.6)',   // Sky blue
+            'rgba(129, 140, 248, 0.5)',  // Indigo light
         ],
         light: [
-            { fill: 'rgba(99, 102, 241, 0.08)', stroke: 'rgba(99, 102, 241, 0.25)' },
-            { fill: 'rgba(129, 140, 248, 0.08)', stroke: 'rgba(129, 140, 248, 0.25)' },
-            { fill: 'rgba(79, 70, 229, 0.08)', stroke: 'rgba(79, 70, 229, 0.25)' },
-            { fill: 'rgba(67, 56, 202, 0.06)', stroke: 'rgba(67, 56, 202, 0.2)' },
-            { fill: 'rgba(55, 48, 163, 0.06)', stroke: 'rgba(55, 48, 163, 0.2)' }
+            'rgba(79, 70, 229, 0.6)',    // Indigo
+            'rgba(124, 58, 237, 0.6)',   // Purple
+            'rgba(99, 102, 241, 0.6)',   // Blue
+            'rgba(139, 92, 246, 0.5)',   // Violet
+            'rgba(59, 130, 246, 0.5)',   // Sky blue
+            'rgba(67, 56, 202, 0.4)',    // Indigo dark
         ]
     };
 
@@ -46,14 +45,64 @@
     const canvas = document.getElementById('physics-canvas');
     const ctx = canvas.getContext('2d');
     let particles = [];
-    let mouse = { x: null, y: null, isMoving: false };
-    let animationId = null;
+    let mouse = { x: null, y: null };
+    let time = 0;
     let currentTheme = 'dark';
+
+    // Perlin noise implementation
+    class PerlinNoise {
+        constructor() {
+            this.permutation = [];
+            for (let i = 0; i < 256; i++) {
+                this.permutation.push(i);
+            }
+            // Shuffle
+            for (let i = 255; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [this.permutation[i], this.permutation[j]] = [this.permutation[j], this.permutation[i]];
+            }
+            this.permutation = [...this.permutation, ...this.permutation];
+        }
+
+        fade(t) {
+            return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+
+        lerp(a, b, t) {
+            return a + t * (b - a);
+        }
+
+        grad(hash, x, y) {
+            const h = hash & 3;
+            const u = h < 2 ? x : y;
+            const v = h < 2 ? y : x;
+            return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+        }
+
+        noise(x, y) {
+            const X = Math.floor(x) & 255;
+            const Y = Math.floor(y) & 255;
+            x -= Math.floor(x);
+            y -= Math.floor(y);
+            const u = this.fade(x);
+            const v = this.fade(y);
+            const a = this.permutation[X] + Y;
+            const b = this.permutation[X + 1] + Y;
+            return this.lerp(
+                this.lerp(this.grad(this.permutation[a], x, y), this.grad(this.permutation[b], x - 1, y), u),
+                this.lerp(this.grad(this.permutation[a + 1], x, y - 1), this.grad(this.permutation[b + 1], x - 1, y - 1), u),
+                v
+            );
+        }
+    }
+
+    const perlin = new PerlinNoise();
 
     // Resize canvas
     function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        initParticles();
     }
 
     // Particle class
@@ -65,31 +114,43 @@
         reset() {
             this.x = Math.random() * canvas.width;
             this.y = Math.random() * canvas.height;
-            this.size = CONFIG.minSize + Math.random() * (CONFIG.maxSize - CONFIG.minSize);
-            this.vx = (Math.random() - 0.5) * CONFIG.baseVelocity * 2;
-            this.vy = (Math.random() - 0.5) * CONFIG.baseVelocity * 2;
-            this.rotation = Math.random() * Math.PI * 2;
-            this.rotationSpeed = (Math.random() - 0.5) * CONFIG.rotationSpeed * 2;
-            this.shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-            this.colorIndex = Math.floor(Math.random() * COLORS.dark.length);
-            this.depth = 0.3 + Math.random() * 0.7; // Parallax depth
-            this.baseOpacity = 0.3 + Math.random() * 0.5;
-            this.pulsePhase = Math.random() * Math.PI * 2;
-            this.pulseSpeed = 0.02 + Math.random() * 0.02;
+            this.vx = 0;
+            this.vy = 0;
+            this.color = this.getColor();
+            this.opacity = 0.3 + Math.random() * 0.5;
+            this.size = 0.5 + Math.random() * 1.5;
+        }
+
+        getColor() {
+            const colors = COLORS[currentTheme];
+            return colors[Math.floor(Math.random() * colors.length)];
         }
 
         update() {
-            // Apply mouse influence
+            // Get flow direction from noise field
+            const noiseValue = perlin.noise(
+                this.x * CONFIG.noiseScale,
+                this.y * CONFIG.noiseScale + time
+            );
+
+            // Convert noise to angle (full rotation range)
+            const angle = noiseValue * Math.PI * 4;
+
+            // Add flow force (upward bias for "antigravity" effect)
+            this.vx += Math.cos(angle) * CONFIG.flowSpeed * 0.1;
+            this.vy += Math.sin(angle) * CONFIG.flowSpeed * 0.1 - 0.05; // Upward bias
+
+            // Mouse interaction - soft repulsion
             if (mouse.x !== null && mouse.y !== null) {
                 const dx = this.x - mouse.x;
                 const dy = this.y - mouse.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
-                
-                if (distance < CONFIG.mouseInfluence) {
+
+                if (distance < CONFIG.mouseInfluence && distance > 0) {
                     const force = (CONFIG.mouseInfluence - distance) / CONFIG.mouseInfluence;
-                    const angle = Math.atan2(dy, dx);
-                    this.vx += Math.cos(angle) * force * CONFIG.mouseRepelStrength * this.depth;
-                    this.vy += Math.sin(angle) * force * CONFIG.mouseRepelStrength * this.depth;
+                    const smoothForce = force * force * CONFIG.mouseStrength;
+                    this.vx += (dx / distance) * smoothForce;
+                    this.vy += (dy / distance) * smoothForce;
                 }
             }
 
@@ -97,158 +158,66 @@
             this.vx *= CONFIG.friction;
             this.vy *= CONFIG.friction;
 
-            // Add subtle drift
-            this.vx += (Math.random() - 0.5) * 0.02;
-            this.vy += (Math.random() - 0.5) * 0.02;
+            // Limit speed
+            const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            if (speed > CONFIG.maxSpeed) {
+                this.vx = (this.vx / speed) * CONFIG.maxSpeed;
+                this.vy = (this.vy / speed) * CONFIG.maxSpeed;
+            }
 
             // Update position
             this.x += this.vx;
             this.y += this.vy;
 
-            // Update rotation
-            this.rotation += this.rotationSpeed;
-
-            // Update pulse
-            this.pulsePhase += this.pulseSpeed;
-
-            // Boundary collision with bounce
-            if (this.x < -this.size) {
-                this.x = -this.size;
-                this.vx *= -CONFIG.bounceDecay;
-            } else if (this.x > canvas.width + this.size) {
-                this.x = canvas.width + this.size;
-                this.vx *= -CONFIG.bounceDecay;
-            }
-
-            if (this.y < -this.size) {
-                this.y = -this.size;
-                this.vy *= -CONFIG.bounceDecay;
-            } else if (this.y > canvas.height + this.size) {
-                this.y = canvas.height + this.size;
-                this.vy *= -CONFIG.bounceDecay;
-            }
-
-            // Wrap around for seamless effect
-            if (this.x < -this.size * 2) this.x = canvas.width + this.size;
-            if (this.x > canvas.width + this.size * 2) this.x = -this.size;
-            if (this.y < -this.size * 2) this.y = canvas.height + this.size;
-            if (this.y > canvas.height + this.size * 2) this.y = -this.size;
+            // Wrap around edges seamlessly
+            if (this.x < -20) this.x = canvas.width + 20;
+            if (this.x > canvas.width + 20) this.x = -20;
+            if (this.y < -20) this.y = canvas.height + 20;
+            if (this.y > canvas.height + 20) this.y = -20;
         }
 
         draw() {
-            const colors = COLORS[currentTheme][this.colorIndex];
-            const pulse = 1 + Math.sin(this.pulsePhase) * 0.1;
-            const currentSize = this.size * pulse * this.depth;
-            
+            const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            const angle = Math.atan2(this.vy, this.vx);
+            const length = CONFIG.particleLength * (0.5 + speed * 0.5) * this.size;
+
             ctx.save();
             ctx.translate(this.x, this.y);
-            ctx.rotate(this.rotation);
-            ctx.globalAlpha = this.baseOpacity * this.depth;
+            ctx.rotate(angle);
 
-            ctx.fillStyle = colors.fill;
-            ctx.strokeStyle = colors.stroke;
-            ctx.lineWidth = 1.5;
-
-            this.drawShape(currentSize);
+            // Draw elongated particle (dash/stroke style)
+            ctx.beginPath();
+            ctx.moveTo(-length / 2, 0);
+            ctx.lineTo(length / 2, 0);
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = CONFIG.particleWidth * this.size;
+            ctx.lineCap = 'round';
+            ctx.globalAlpha = this.opacity;
+            ctx.stroke();
 
             ctx.restore();
-        }
-
-        drawShape(size) {
-            const halfSize = size / 2;
-
-            switch (this.shape) {
-                case 'circle':
-                    ctx.beginPath();
-                    ctx.arc(0, 0, halfSize, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-                    break;
-
-                case 'triangle':
-                    ctx.beginPath();
-                    ctx.moveTo(0, -halfSize);
-                    ctx.lineTo(halfSize, halfSize);
-                    ctx.lineTo(-halfSize, halfSize);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
-                    break;
-
-                case 'square':
-                    ctx.beginPath();
-                    ctx.rect(-halfSize, -halfSize, size, size);
-                    ctx.fill();
-                    ctx.stroke();
-                    break;
-
-                case 'hexagon':
-                    ctx.beginPath();
-                    for (let i = 0; i < 6; i++) {
-                        const angle = (i * Math.PI) / 3;
-                        const x = halfSize * Math.cos(angle);
-                        const y = halfSize * Math.sin(angle);
-                        if (i === 0) ctx.moveTo(x, y);
-                        else ctx.lineTo(x, y);
-                    }
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
-                    break;
-
-                case 'diamond':
-                    ctx.beginPath();
-                    ctx.moveTo(0, -halfSize);
-                    ctx.lineTo(halfSize * 0.6, 0);
-                    ctx.lineTo(0, halfSize);
-                    ctx.lineTo(-halfSize * 0.6, 0);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
-                    break;
-            }
-        }
-    }
-
-    // Draw connections between nearby particles
-    function drawConnections() {
-        const connectionColor = currentTheme === 'dark' 
-            ? 'rgba(129, 140, 248, ' 
-            : 'rgba(99, 102, 241, ';
-
-        for (let i = 0; i < particles.length; i++) {
-            for (let j = i + 1; j < particles.length; j++) {
-                const dx = particles[i].x - particles[j].x;
-                const dy = particles[i].y - particles[j].y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance < CONFIG.connectionDistance) {
-                    const opacity = (1 - distance / CONFIG.connectionDistance) * CONFIG.connectionOpacity;
-                    ctx.beginPath();
-                    ctx.strokeStyle = connectionColor + opacity + ')';
-                    ctx.lineWidth = 0.5;
-                    ctx.moveTo(particles[i].x, particles[i].y);
-                    ctx.lineTo(particles[j].x, particles[j].y);
-                    ctx.stroke();
-                }
-            }
         }
     }
 
     // Initialize particles
     function initParticles() {
         particles = [];
-        for (let i = 0; i < CONFIG.particleCount; i++) {
+        const count = Math.min(CONFIG.particleCount, Math.floor((canvas.width * canvas.height) / 2500));
+        for (let i = 0; i < count; i++) {
             particles.push(new Particle());
         }
     }
 
     // Animation loop
     function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Fade effect for trail
+        ctx.fillStyle = currentTheme === 'dark'
+            ? 'rgba(10, 10, 11, 0.15)'
+            : 'rgba(248, 249, 252, 0.15)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw connections first (behind particles)
-        drawConnections();
+        // Update time for noise animation
+        time += CONFIG.noiseSpeed;
 
         // Update and draw particles
         particles.forEach(particle => {
@@ -256,54 +225,72 @@
             particle.draw();
         });
 
-        animationId = requestAnimationFrame(animate);
+        requestAnimationFrame(animate);
     }
 
-    // Mouse tracking
-    function handleMouseMove(e) {
-        mouse.x = e.clientX;
-        mouse.y = e.clientY;
-        mouse.isMoving = true;
+    // Mouse tracking with smoothing
+    let targetMouse = { x: null, y: null };
 
-        // Reset moving flag after delay
-        clearTimeout(mouse.timeout);
-        mouse.timeout = setTimeout(() => {
-            mouse.isMoving = false;
-        }, 100);
+    function handleMouseMove(e) {
+        targetMouse.x = e.clientX;
+        targetMouse.y = e.clientY;
     }
 
     function handleMouseLeave() {
-        mouse.x = null;
-        mouse.y = null;
-        mouse.isMoving = false;
+        targetMouse.x = null;
+        targetMouse.y = null;
+    }
+
+    function updateMouse() {
+        if (targetMouse.x !== null && targetMouse.y !== null) {
+            if (mouse.x === null) {
+                mouse.x = targetMouse.x;
+                mouse.y = targetMouse.y;
+            } else {
+                mouse.x += (targetMouse.x - mouse.x) * 0.1;
+                mouse.y += (targetMouse.y - mouse.y) * 0.1;
+            }
+        } else {
+            mouse.x = null;
+            mouse.y = null;
+        }
+        requestAnimationFrame(updateMouse);
     }
 
     // Touch support
     function handleTouchMove(e) {
         if (e.touches.length > 0) {
-            mouse.x = e.touches[0].clientX;
-            mouse.y = e.touches[0].clientY;
+            targetMouse.x = e.touches[0].clientX;
+            targetMouse.y = e.touches[0].clientY;
         }
     }
 
     function handleTouchEnd() {
-        mouse.x = null;
-        mouse.y = null;
+        targetMouse.x = null;
+        targetMouse.y = null;
     }
 
     // Theme management
     function initTheme() {
         const savedTheme = localStorage.getItem('theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        
+
         currentTheme = savedTheme || (prefersDark ? 'dark' : 'light');
         document.documentElement.setAttribute('data-theme', currentTheme);
+        updateParticleColors();
     }
 
     function toggleTheme() {
         currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', currentTheme);
         localStorage.setItem('theme', currentTheme);
+        updateParticleColors();
+    }
+
+    function updateParticleColors() {
+        particles.forEach(particle => {
+            particle.color = particle.getColor();
+        });
     }
 
     // Navbar scroll effect
@@ -319,7 +306,7 @@
     // Smooth scroll for navigation
     function initSmoothScroll() {
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function(e) {
+            anchor.addEventListener('click', function (e) {
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
@@ -336,19 +323,12 @@
     function init() {
         resizeCanvas();
         initTheme();
-        initParticles();
         initSmoothScroll();
         animate();
+        updateMouse();
 
         // Event listeners
-        window.addEventListener('resize', () => {
-            resizeCanvas();
-            // Reinitialize particles on significant size change
-            if (particles.length !== CONFIG.particleCount) {
-                initParticles();
-            }
-        });
-
+        window.addEventListener('resize', resizeCanvas);
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseleave', handleMouseLeave);
         window.addEventListener('touchmove', handleTouchMove, { passive: true });
