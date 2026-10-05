@@ -119,16 +119,19 @@ void main() {
 
     function create(canvas, options) {
         const host = options.host;
+        // Software-rendered WebGL is too slow for this; add ?ink to the URL to force it anyway.
+        const force = /[?&]ink(=|&|$)/.test(window.location.search);
         const gl = canvas.getContext('webgl2', {
-            alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false
+            alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false,
+            failIfMajorPerformanceCaveat: !force
         });
         if (!gl) return null;
         gl.getExtension('EXT_color_buffer_float');
         gl.getExtension('EXT_color_buffer_half_float');
+        const release = () => { const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); };
 
         let theme = options.theme === 'light' ? 'light' : 'dark';
-        const listeners = [];
-        const on = (target, type, fn, opts) => { target.addEventListener(type, fn, opts); listeners.push([target, type, fn, opts]); };
+        const on = (target, type, fn, opts) => target.addEventListener(type, fn, opts);
 
         // --- programs -------------------------------------------------------
         function compile(type, source) {
@@ -155,6 +158,7 @@ void main() {
             }
         } catch (err) {
             console.warn('Ink: shader setup failed', err);
+            release();
             return null;
         }
 
@@ -216,7 +220,8 @@ void main() {
 
         function resize() {
             const rect = canvas.getBoundingClientRect();
-            const dpr = Math.min(window.devicePixelRatio || 1, CONFIG.maxDpr);
+            // Cap the drawing buffer at ~2.2 MP: the dye texture is far smaller, so more pixels only upscale.
+            const dpr = Math.min(window.devicePixelRatio || 1, CONFIG.maxDpr, Math.sqrt(2.2e6 / Math.max(1, rect.width * rect.height)));
             const w = Math.max(2, Math.round(rect.width * dpr)), h = Math.max(2, Math.round(rect.height * dpr));
             if (canvas.width === w && canvas.height === h) return false;
             canvas.width = w; canvas.height = h;
@@ -308,7 +313,7 @@ void main() {
         }
 
         resize();
-        if (!build()) { console.warn('Ink: float render targets unsupported'); return null; }
+        if (!build()) { console.warn('Ink: float render targets unsupported'); release(); return null; }
         seed(8);
         for (let i = 0; i < 40; i++) step(1 / 60);
 
@@ -320,6 +325,8 @@ void main() {
             return [(e.clientX - rect.left) / rect.width, 1 - (e.clientY - rect.top) / rect.height];
         };
         on(host, 'pointermove', e => {
+            // Under reduced motion only a deliberate press stirs the ink.
+            if (REDUCED) return;
             const [x, y] = toUV(e);
             if (prevX !== null) queue.push([x, y, x - prevX, y - prevY, null]);
             prevX = x; prevY = y; lastMove = performance.now(); wake();
@@ -336,12 +343,30 @@ void main() {
         });
 
         // --- loop -----------------------------------------------------------
-        let raf = 0, visible = true, last = 0, activeUntil = 0, frames = 0, fpsAt = 0, fps = 0;
+        let raf = 0, visible = true, lost = false, last = 0, activeUntil = 0, rebuildAt = 0, frames = 0, fpsAt = 0, fps = 0;
+        const schedule = () => { if (!raf && !lost && visible && !document.hidden) raf = requestAnimationFrame(frame); };
+
+        function fail() {
+            lost = true;
+            if (raf) cancelAnimationFrame(raf);
+            raf = 0;
+            if (options.onFail) options.onFail();
+        }
+
         function frame(now) {
             raf = 0;
+            if (lost) return;
+            if (!last) { frames = 0; fpsAt = now; }
             const dt = last ? Math.min((now - last) / 1000, 1 / 60) : 1 / 60;
             last = now;
-            if (resize()) { if (!build()) return; seed(6); }
+            // Resizing keeps rendering the old targets and rebuilds once the size settles.
+            if (resize()) rebuildAt = now + 150;
+            if (rebuildAt && now >= rebuildAt) {
+                rebuildAt = 0;
+                if (!build()) { release(); fail(); return; }
+                seed(6);
+                if (REDUCED) for (let i = 0; i < 40; i++) step(1 / 60);
+            }
             const aspect = canvas.width / canvas.height;
             if (now - strokeAt > 380) { stroke = colour(); strokeAt = now; }
             for (const [x, y, dx, dy, c] of queue) {
@@ -357,40 +382,43 @@ void main() {
             step(dt);
             render();
             frames++;
-            if (now - fpsAt > 500) { fps = Math.round(frames * 1000 / (now - fpsAt)); frames = 0; fpsAt = now; if (options.onStats) options.onStats(stats()); }
-            if (visible && !document.hidden && (!REDUCED || now < activeUntil)) raf = requestAnimationFrame(frame);
+            if (now - fpsAt > 500) {
+                fps = Math.round(frames * 1000 / (now - fpsAt)); frames = 0; fpsAt = now;
+                if (options.onStats) options.onStats(stats());
+            }
+            if (visible && !document.hidden && (!REDUCED || now < activeUntil || rebuildAt)) raf = requestAnimationFrame(frame);
             else last = 0;
         }
         function wake() {
             activeUntil = performance.now() + 1500;
-            if (visible && !raf) raf = requestAnimationFrame(frame);
+            schedule();
         }
         function stats() { return { gridW: velocity.w, gridH: velocity.h, iterations: CONFIG.pressureIterations, fps: REDUCED ? 0 : fps }; }
 
+        on(canvas, 'webglcontextlost', fail);
         if ('IntersectionObserver' in window) {
-            const io = new IntersectionObserver(entries => {
+            new IntersectionObserver(entries => {
                 visible = entries[entries.length - 1].isIntersecting;
-                if (visible && !raf) raf = requestAnimationFrame(frame);
-            });
-            io.observe(host);
+                schedule();
+            }).observe(host);
         }
-        on(document, 'visibilitychange', () => { if (!document.hidden && visible && !raf) raf = requestAnimationFrame(frame); });
-        raf = requestAnimationFrame(frame);
+        on(document, 'visibilitychange', schedule);
+        on(window, 'resize', schedule);
+        schedule();
 
         return {
             setTheme(next) {
-                if (next === theme) return;
+                if (next === theme || lost) return;
                 theme = next === 'light' ? 'light' : 'dark';
                 dye.clear();
                 seed(6);
-                for (let i = 0; i < 20; i++) step(1 / 60);
+                for (let i = 0; i < (REDUCED ? 40 : 20); i++) step(1 / 60);
                 stroke = colour();
-                wake();
-                if (!raf) raf = requestAnimationFrame(frame);
+                if (REDUCED) render(); else wake();
             },
             stats
         };
     }
 
-    window.Ink = { create };
+    window.InkFluid = { create };
 })();

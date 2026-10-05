@@ -15,8 +15,13 @@
         content="Physics engineering at ITU. Market microstructure research, pre-registered validation, low-latency C++.">
     <meta property="og:url" content="https://durannnsss.github.io/">
     <meta property="og:image" content="https://durannnsss.github.io/og.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Alper Duran Dinçer — Quantitative Research, over a swirl of ink">
     <meta name="twitter:card" content="summary_large_image">
+    <link rel="canonical" href="https://durannnsss.github.io/">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <script>
         (function () {
             var theme = null;
@@ -25,12 +30,12 @@
                 theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
             }
             document.documentElement.setAttribute('data-theme', theme);
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', theme === 'light' ? '#F5F3EE' : '#0B0A09');
         })();
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Geist+Mono:wght@400;500&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+    <link rel="preload" href="fonts/bricolage-grotesque-latin-standard-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/instrument-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -38,7 +43,7 @@
     <a class="skip-link" href="#main">Skip to content</a>
 
     <header class="topbar" id="topbar">
-        <a class="brand" href="#top" aria-label="Alper Duran Dinçer, back to top">ADD</a>
+        <a class="brand" href="#top">Alper Duran Dinçer</a>
         <nav aria-label="Sections">
             <ul class="nav-links">
                 <li><a href="#about">About</a></li>
@@ -95,9 +100,9 @@
             <div class="section-body">
                 <div class="prose">
                     <p>I study Physics Engineering at Istanbul Technical University and work on quantitative research.
-                        This summer I was the sole researcher on a ~6 TB full-depth order-book pipeline at Ata Portföy,
+                        In summer 2026 I was the sole researcher on a ~6 TB full-depth order-book pipeline at Ata Portföy,
                         where every claim had to pass a pre-registered test battery before it reached the desk.</p>
-                    <p>Before that I modeled 0-DTE SPX option Greeks and trained a VAE for black-swan stress tests at
+                    <p>Before that I modeled <span class="nowrap">0-DTE</span> SPX option Greeks and trained a VAE for black-swan stress tests at
                         Riskoptima Hedge Fund. I care about the unglamorous parts that make a result real: data
                         validation, sealed holdouts, effective-N, and costs.</p>
                 </div>
@@ -139,11 +144,12 @@
                                 equities, 100+ days. Built the validation and normalization layer for schema changes,
                                 symbol renames, partial sessions and corrupted records.</li>
                             <li>Designed and ran a pre-registered 7-test battery (placebo, permutation, decile
-                                monotonicity, regime splits, lag tests, bootstrap CIs) with a sealed 46-day holdout. A
-                                blind out-of-sample month then passed 7/7 predictions.</li>
+                                monotonicity, hourly and vol-regime splits, 1-second lag tests, bootstrap CIs) with a
+                                sealed 46-day holdout. A blind out-of-sample month then passed 7/7 pre-registered
+                                predictions.</li>
                             <li>Caught artefacts early: event-grid sampling inflated correlations 5–10× against
-                                time-grid; naive t-statistics overstated significance ~4× until corrected for effective
-                                N.</li>
+                                time-grid; naive <span class="nowrap">t-statistics</span> overstated significance ~4×
+                                until corrected for <span class="nowrap">effective-N</span>.</li>
                             <li>Cost-aware backtests (fees, colocation latency, lag retention) settled the monetization
                                 channel; wrote the A/B pilot spec for desk approval.</li>
                         </ul>
@@ -161,7 +167,7 @@
                         <h3>Machine Learning Engineer Intern <span class="org">· Riskoptima Hedge Fund</span></h3>
                         <p class="where">Istanbul</p>
                         <ul class="points">
-                            <li>Modeled volatility skew and Greeks for 0-DTE SPX options and vertical spreads; backtested
+                            <li>Modeled volatility skew and Greeks for <span class="nowrap">0-DTE</span> SPX options and vertical spreads; backtested
                                 the strategies.</li>
                             <li>Built a VAE with a 3D latent space to synthesize VXX series for black-swan stress tests of
                                 trading algorithms.</li>
@@ -192,7 +198,7 @@
             <div class="section-body">
                 <ul class="projects list">
                     <li class="project" tabindex="0" data-preview="search">
-                        <span class="when">2026 –</span>
+                        <span class="when">Jul 2026 – now</span>
                         <div class="what">
                             <h3>LLM-Guided Symbolic Feature Search</h3>
                             <p>A FunSearch-style loop with an LLM as the mutation operator over feature expressions. 65
@@ -246,7 +252,7 @@
                     <div>
                         <dt>Markets</dt>
                         <dd>Full-depth (ITCH) order-book data, order-book imbalance and order-flow features, tick-size
-                            regimes, execution costs, low-latency concepts, options pricing (Black–Scholes, 0-DTE),
+                            regimes, execution costs, low-latency concepts, options pricing (Black–Scholes, <span class="nowrap">0-DTE</span>),
                             volatility surface</dd>
                     </div>
                     <div>
@@ -256,7 +262,7 @@
                     </div>
                 </dl>
                 <ul class="extras">
-                    <li><span>Languages</span>Turkish (native), English (IELTS 7.0)</li>
+                    <li><span>Spoken</span>Turkish (native), English (IELTS 7.0)</li>
                     <li><span>Award</span>ICYSS-2019 International Conference Presentation Award</li>
                     <li><span>Aikido</span>3rd Kyu, Hombu Dojo, Japan</li>
                     <li><span>In progress</span>SPL Level 2 certification</li>
@@ -271,6 +277,7 @@
                 <div class="email-row">
                     <a class="email" href="mailto:alperdurandincer@gmail.com">alperdurandincer@gmail.com</a>
                     <button class="copy" id="copy-email" type="button" data-email="alperdurandincer@gmail.com">Copy</button>
+                    <span class="visually-hidden" id="copy-status" role="status"></span>
                 </div>
                 <ul class="contact-links">
                     <li><a href="https://www.linkedin.com/in/alper-duran-din%C3%A7er-374159244/" target="_blank"
